@@ -1,0 +1,173 @@
+---
+title: "PML_CourseProject"
+author: "Sunil Kumar"
+date: "June 13, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(RColorBrewer)
+library(rattle)
+library(ggplot2)
+library(randomForest)
+library(knitr)
+```
+  
+## Executive Summary
+The goal of this course project work is to predict as "how (well)" weightlifting exercise was performed by the subjects wearing fitness wearables.  
+  
+This is based on a study reference http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har. The training & testing data are taken from https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv & pml-testing.csv. The dataset has "classe" as outcome and remaining predictor columns.  
+  
+Six young health participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: -  
+"CORRECT classe A" - exactly according to the specification  
+"classe B" - throwing the elbows to the front  
+"classe C" - lifting the dumbbell only halfway  
+"classe D" - lowering the dumbbell only halfway  
+"classe E" - throwing the hips to the front  
+  
+The approach to identifying appropriate machine learning model and consequent prediction has been explained.  
+  
+Q1. How you built your model?  
+A1. I tried finding model with 3 alternatives: - Decision Tree, RandomForest, and GBM of which RandomForest has been found to be giving best accuracy (0.9939).  
+  
+Q2. How you used cross validation?  
+A2. I splitted clearned training data into 60% for training and 40% for validation as this dataset has quite big no of observations.  
+  
+Q3. What you think the expected out of sample error is?  
+A3. Expected out-of-sample error is 0.61%. Refer to last section.  
+  
+Q4. Why you made the choices you did?  
+A4. Choices/decisions reasoning has been exlained in each section.  
+  
+### Loading data
+  
+- Read both "na" & "NA" as NA  
+- Read blank cells "" too as NA => As there are quite many blank cells, their imputation by mean or such alternative will not make sense for accelerometer & derived variables  
+- Read divide-by-zero-error "#DIV/0!" too as NA => as there are quite a few such instances  
+```{r}
+training <- read.csv("./pml_training.csv", blank.lines.skip=TRUE, na.strings=c("", "na", "NA", "#DIV/0!"))
+testing <- read.csv("./pml_testing.csv", blank.lines.skip=TRUE, na.strings=c("", "na", "NA", "#DIV/0!"))
+```
+  
+- Training data set 19622 x 160  
+- Testing data set 20 x 160  
+```{r}
+dim(training); dim(testing);
+```
+  
+## Data exploration & cleaning
+  
+- Identify redundant variables from 'testing' data, i.e., nearZeroVar's zeroVar columns  
+- It does not make any sense to fit any model involving such variables in 'training' data  
+- NOTE that there are only 20 samples in 'testing' data, hence finding/cleaning 'nearZeroVar' variables will not make any sense  
+  
+- NOTE that this dataset has a concept of new_window and num_window which indicates that there are 406 windows => (19216 = 19622 - 406)  
+- It seems that all variables (whose count is 101) which are trying to find summary in each of these windows have NA value in 19216 observations out of total 19622 observations  
+- nearZeroVar's zeroVar removes all such 101 columns  
+```{r}
+nzvTestMetrics <- nearZeroVar(testing, saveMetrics = T)
+zvTest_T <- which(nzvTestMetrics$zeroVar == T)
+redundantTestVars = names(testing)[zvTest_T]
+```
+  
+- Remove zvTest_T variables & also those variables containing "^X|^user_name|timestamp|window"  
+- Confirmed that cleaned 'training' data after removing redundant variables (suggested by 'testing' data) do not have any further zeroVar or nearZeroVar  
+```{r}
+trainCleaned = training[, -(zvTest_T)]
+
+metadataVars <- grepl("^X|^user_name|timestamp|window", names(trainCleaned))
+trainCleaned <- trainCleaned[, !(metadataVars)]
+dim(trainCleaned)
+```
+  
+- Perform exact same cleaning of redundant/zeroVar variables from 'testing' dataset too & also remove last column 'problem_id' which is a dummy replacement for 'classe'  
+```{r}
+testFinal = testing[, -(zvTest_T)]
+
+metadataVars <- grepl("^X|^user_name|timestamp|window", names(testFinal))
+testFinal <- testFinal[, !(metadataVars)]
+testFinal = testFinal[, -(dim(testFinal)[2])]
+dim(testFinal)
+```
+  
+- Split 'trainCleaned' dataset into 'trainFinal' & 'validateFinal' dataset  
+- As this dataset has huge no of observations (19622), hence using only 60% of them for training and rest for validation  
+```{r}
+set.seed(12345)
+idxTrain<- createDataPartition(trainCleaned$classe, p=0.6, list=FALSE)
+
+trainFinal <- trainCleaned[idxTrain, -1]
+dim(trainFinal)
+
+validateFinal <- trainCleaned[-idxTrain, -1]
+dim(validateFinal)
+```
+  
+## Decision Tree model  fitting & prediction
+  
+```{r}
+set.seed(12345)
+modFitRpart <- rpart(classe ~ ., data=trainFinal, method="class")
+```
+  
+- Decision tree plot of this large model involving 52 variables will not give any visual clarity, hence rely on confusion matrix data for assessing  
+```{r}
+# fancyRpartPlot(modFitA1)
+```
+  
+```{r}
+predictRpart <- predict(modFitRpart, validateFinal, type = "class")
+cmDecisionTree <- confusionMatrix(predictRpart, validateFinal$classe)
+cmDecisionTree
+
+plot(cmDecisionTree$table, col = cmDecisionTree$byClass, main = paste("Decision Tree Confusion Matrix: Accuracy =", round(cmDecisionTree$overall['Accuracy'], 4)))
+```
+
+## RandomForest model fitting and prediction
+```{r}
+set.seed(12345)
+modFitRandomForest <- randomForest(classe ~ ., data=trainFinal)
+predictRandomForest <- predict(modFitRandomForest, validateFinal, type = "class")
+cmRandomForest <- confusionMatrix(predictRandomForest, validateFinal$classe)
+cmRandomForest
+
+plot(modFitRandomForest)
+
+plot(cmRandomForest$table, col = cmRandomForest$byClass, main = paste("Random Forest Confusion Matrix: Accuracy =", round(cmRandomForest$overall['Accuracy'], 4)))
+```
+
+## GBM model fitting and prediction
+```{r}
+set.seed(12345)
+fitControl <- trainControl(method = "repeatedcv",
+                           number = 5,
+                           repeats = 1)
+
+modFitGBM <- train(classe ~ ., data=trainFinal, method = "gbm",
+                 trControl = fitControl,
+                 verbose = FALSE)
+
+finalModelGBM <- modFitGBM$finalModel
+
+predictGBM <- predict(modFitGBM, newdata=validateFinal)
+accuracyGBM <- confusionMatrix(predictGBM, validateFinal$classe)
+accuracyGBM
+
+plot(modFitGBM, ylim=c(0.9, 1))
+```
+  
+## Predicting Results on the Test Data
+  
+- Accuracy of RandomForest is 0.9939 which is better than Rpart Decision Tree accuracy 0.7039 & GBM accuracy 0.9627  
+- The expected out-of-sample error is 100-99.39 = 0.61%  
+```{r}
+predictFinal <- predict(modFitRandomForest, testFinal, type = "class")
+predictFinal
+```

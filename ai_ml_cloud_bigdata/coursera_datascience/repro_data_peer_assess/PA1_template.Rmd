@@ -1,0 +1,172 @@
+---
+title: "Reproducible Research: Peer Assessment 1"
+output: 
+  html_document:
+    keep_md: true
+---
+
+## Load required library
+```{r}
+library(dplyr)
+```
+
+
+## Loading and preprocessing the data
+  
+- Load the concerned dataset into 'activity'  
+- Convert 'date' into R 'date' format (observe the difference between activity$date datatype before & after conversion) 
+
+```{r}
+activity<-read.csv("./activity.csv", header = TRUE)
+str(activity)
+activity[,2] <- as.Date(activity$date)
+str(activity)
+```
+
+- dataset size is 17568 x 3  
+- date: 
+    - 61 days, 
+    - start date on 2012-10-01 (Mon), 
+    - end date on 2012-11-30 (Fri), 
+    - 8 weekends, 
+    - 288 observations on each day
+- interval: 
+    - minutes value at the interval of 5 mins
+    - but minutes value at n\*60 is surprisingly n\*100
+    - minutes value resets to 0 on each new day
+```{r}
+# dataset size is 17568 x 3
+dim(activity)
+
+# 61 consecutive days
+length(unique(activity$date))
+
+# 288 observations on each day
+head(table(activity$date))
+
+# consecutive difference between interval is mostly 5 except at n*60 & on new day
+table(diff(activity$interval, 1))
+```
+
+## Imputing missing values (moving this question above as this is crucial in identifying no-activity-days)
+
+- NA is found in 'steps' variable only
+    - total count of NA is 2304 (8 days of no activity * 288 observations per day)
+    - there was no activity captured on 8 of the 61 days
+    - 3 options (1. remove those observations, 2. replace NA with 0, 3. replace NA with mean of valid 'steps' in all 'interval' across valid days)
+    - Going ahead with 2nd option (reapace NA with 0)
+  
+```{r}
+# NA count in 'steps' column is 2304
+sum(is.na(activity$steps))
+sum(is.na(activity))
+
+# NA count on each of the days
+statsNA <- activity %>% group_by(date) %>% summarise (daysStepsNA = sum(is.na(steps)))
+unique(statsNA$daysStepsNA)
+
+# dates on which there was no activity
+statsNA$date[which(statsNA$daysStepsNA == 288)]
+
+# Make a new dataset by replacing all NA with 0
+activity_NAs_Zero <- activity
+activity_NAs_Zero[is.na(activity_NAs_Zero)] <- 0
+```
+
+## What is mean total number of steps taken per day?
+
+- Calculate the total number of steps taken per day
+    - Both calculations below should give same result  
+```{r}
+stepsCount <- with(activity, tapply(steps, date, sum, na.rm=TRUE))
+stepsCount_NAs_Zero <- with(activity_NAs_Zero, tapply(steps, date, sum))
+```
+
+- Make a histogram of the total number of steps taken each day
+    - Min & max steps count are 41 & 21194
+    - Histogram of steps count on each days with 100 bins which shows 10 instances of near-zero values which is due to 8 days of no-activity and 2 small values (41 & 126 are small w.r.t. max 21194)
+```{r}
+# min & max steps count
+min(stepsCount)
+max(stepsCount)
+
+# Hist plot with 100 bins
+hist(stepsCount, breaks=100)
+```
+
+- Calculate and report the mean and median of the total number of steps taken per day
+```{r}
+# mean & median of daily steps count incuding no activity days
+mean(stepsCount)
+median(stepsCount)
+```
+
+
+## What is the average daily activity pattern?
+
+- Make a time series plot (type = "l") of the 5-minute interval (x-axis) and the average number of steps taken, averaged across all days (y-axis), i.e., plot average of steps count in each intervals
+- average daily activity in each interval
+    - Both steps mean have been plotted together
+
+```{r}
+# Ignore those 8 no acitivity days
+stepsSplit <- split(activity$steps, activity$date)
+stepsSplit = data.frame(stepsSplit)
+dim(stepsSplit)
+stepsMean = apply(stepsSplit, 1, mean, na.rm=TRUE)
+
+# Plot steps mean in each interval across days
+plot(activity$interval[1:288], stepsMean, type = "l", col="red", xlab = "Intervals", ylab = "Average Steps", main = "Steps mean in intervals over days (original -vs- imputed)")
+
+# Include those 8 no activity days using imputed data
+# "na.rm=TRUE" is redundant in this case
+stepsSplit_NAs_Zero <- split(activity_NAs_Zero$steps, activity_NAs_Zero$date)
+stepsSplit_NAs_Zero = data.frame(stepsSplit_NAs_Zero)
+dim(stepsSplit_NAs_Zero)
+stepsMean_NAs_Zero = apply(stepsSplit_NAs_Zero, 1, mean, na.rm=TRUE)
+
+# Compare these means
+head(data.frame(stepsMean, stepsMean_NAs_Zero))
+
+# Plot steps mean in each interval across days for imputed dataset
+lines(activity$interval[1:288], stepsMean_NAs_Zero, col="blue")
+
+```
+
+- Which 5-minute interval, on average across all the days in the dataset, contains the maximum number of steps?
+```{r}
+activity$interval[which(stepsMean == max(stepsMean))]
+```
+
+## Are there differences in activity patterns between weekdays and weekends?
+
+- Split dataset into weekday (53 days) & weekend (8 days)
+```{r}
+# Mutate dataset with a new column for 'day'
+activity_NAs_Zero <- mutate(activity_NAs_Zero, day = ifelse(weekdays(activity_NAs_Zero$date) == "Saturday" | weekdays(activity_NAs_Zero$date) == "Sunday", "weekend", "weekday"))
+activity_NAs_Zero$day <- as.factor(activity_NAs_Zero$day)
+str(activity_NAs_Zero)
+
+#  Split dataset into weekday (53 days) & weekend (8 days)
+activityWeekend <- subset(activity_NAs_Zero, as.character(activity_NAs_Zero$day) == "weekend")
+activityWeekday <- subset(activity_NAs_Zero, as.character(activity_NAs_Zero$day) == "weekday")
+
+stepsSplitWeekday <- split(activityWeekday$steps, activityWeekday$date)
+stepsSplitWeekday = data.frame(stepsSplitWeekday)
+dim(stepsSplitWeekday)
+stepsMeanWeekday = apply(stepsSplitWeekday, 1, mean, na.rm=TRUE)
+
+stepsSplitWeekend <- split(activityWeekend$steps, activityWeekend$date)
+stepsSplitWeekend = data.frame(stepsSplitWeekend)
+dim(stepsSplitWeekend)
+stepsMeanWeekend = apply(stepsSplitWeekend, 1, mean, na.rm=TRUE)
+
+par(mfrow=c(2,1))
+
+# Plot steps mean in each interval across days (weekday)
+plot(activity$interval[1:288], stepsMeanWeekday, type = "l", xlab = "Intervals", ylab = "Average Steps", main = "Steps mean in each interval across days (weekday)")
+
+# Plot steps mean in each interval across days (weekend)
+plot(activity$interval[1:288], stepsMeanWeekend, type = "l", xlab = "Intervals", ylab = "Average Steps", main = "Steps mean in each interval across days (weekend)")
+```
+

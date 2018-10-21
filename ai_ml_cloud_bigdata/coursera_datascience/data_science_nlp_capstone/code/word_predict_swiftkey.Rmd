@@ -1,0 +1,689 @@
+title: "Word Prediction Using Smoothing and Backoff With a 3-gram Language Model"
+author: "Sunil Kumar (@sunil4data; sunil_iitb96@yahoo.co.in)"
+date: "Aug 09, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE, cache=FALSE, message=FALSE, warning=FALSE, comment=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# 1. Executive Summary
+
+The intent of this Capstone Final Project is to create an online application to accept incomplete user sentence and predict contextually completing next word.  
+  
+Refer to the milestone report http://rpubs.com/sunil4data/milesRepCapstone for Data Pre-processing and Exploratory Data Analysis.  
+  
+The next-word-prediction in shiny web app is served by a 3-gram Language Model learned using Stupid Backoff algorithms trained on (say) ~10% of original dataset.  
+  
+  
+# 2. Big picture of the problem and the knowledge domain
+  
+Along with this Data Science specialization course #10 "Data Sciene Capstone", I started delving into areas of NLP relevant to this course project. Below are just few highlights as how n-gram is currently relevant.  
+  
+SwiftKey keyboard for smartphone was 1st released in 2010 and it was based on n-gram language model. SwiftKey upgraded the Language Model Learning from n-gram to Neural Network since late 2016. It is interesting to note that SwiftKey keyboard uses both Neural Network (for offline massive learning and static prediction on phone) and n-gram (for dynamic learning from user input as well as for prediction on phone) - refer to https://www.forbes.com/sites/kevinmurnane/2016/09/26/why-swiftkeys-new-keyboard-with-an-artificial-neural-network-is-better-than-the-old-version/#65f234021f9c.  
+  
+Behemoth live example of n-gram is Google Books n-gram http://storage.googleapis.com/books/ngrams/books/datasetsv2.html but note that such domain specific n-gram cannot be reused in different problem domains.  
+  
+  
+It is quite obvious that better accuracy (a.k.a., Perplexity) demands larger training dataset and larger model size. Hence, this problem domain has the challenge of consuming huge text dataset, distributed / sharded storage and parallel computing. Hence, any magic or improvement in this domain is worth if it can lend itself to distributed storage and parallel computing. Few examples of large scale Language MOdeling setup are the following: -   
+  
+1. The Stupid Backoff is one such recent example which is inexpensive to calculate in distributed environment (see ref sec at the bottom)  
+  
+2. Facebook https://code.fb.com/core-data/using-apache-spark-for-large-scale-language-model-training/   
+  
+3. Language Modeling of Billions of pages from Common Crawl corpus https://kheafield.com/papers/stanford/crawl_paper.pdf   
+  
+"Exploring the limits of Language Modeling" paper [Ref. #3] presents the technology trends in Language Modeling. Research and businesses upgraded towards RNN/LSTM/GRU continuous Language Modeling as compared to earlier count-based n-gram Language Modeling.  
+
+
+# 3. NLP Background study notes & findings
+
+## 3.1 Comparison of Stupid BackOff -vs- Add1Laplace
+
+This project uses Stupid Backoff algorithm to predict next most probable words. It has been observed that Add1Laplace probability estimation is not quite useful in correctly predicting next word. Below listed are few points about SBO and Add1Laplace: -  
+  
+1. Though Kneser-Ney is known to be the state-of-the-art algorithm compared to other available smoothing/backoff/interpolation algorithms, Stupid BackOff performs at par with Kneser-Ney for large training dataset  
+  
+2. SBO estimates score and not probability and it does not involve score/probability normalization unlike others  
+  
+3. SBO uses inexpensive calculations and it is quite accurate for large training dataset  
+  
+4. SBO uses relative frequencies and it does not use discounting rather it penalizes backed-off scores (lambda=0.4)  
+  
+5. Add1Laplace discounting moves too much probabilities mass to zero frequency terms  
+  
+6. Add1Laplace is not good at predicting higher order ngrams occuring at relatively low frequency (NOTE that 'calcProbsCompletingNgrams' function provides list of both SBO & Add1Laplace. Use it to compare the prediction. Even 'calcAccuracy' can be used to observe the huge difference in accuracy by SBO & Add1Laplace.)  
+
+
+## 3.2 n-gram LM model training
+
+Training of n-gram LM model involves the following steps: -  
+  
+1. Read certain percentage ('dataPercentToUse' global parameter) of lines from each of the files in text corpora  
+  
+2. Split this sample content into 60:20:20 portion and merge blogs, news & twitters text to prepare training:validation:testing sample content  
+  
+3. Sample content is converted into cleaned sentences/documents  
+
+    - split into sentences  
+    
+    - remote stop words: Refer to 'rmStopWords' global parameter to control this behaviour during both training and prediction. There are just ~100 odd stop words but they are highly frequent and they account for ~25% of total tokens; If we retain these stop words, they command relatively high probability and hence undermine real meaningful words causing incorrect prediction; If retained, one might often observe 2 stop words in 3-grams, hence it may be worth trying to retain stop words if LM model ngrams are available upto 4 or 5-grams  
+    
+    - remove consequent empty lines  
+    
+    - remove URIs  
+    
+    - remove Twitter hashtags & handles  
+    
+    - split 'abc_xyz' & 'abc-xyz' tokens into 'abc xyz'  
+    
+    - remove tokens containing numerics like 1st/2nd/100/a01   
+    
+4. Prepare documents frequency matrix (dfm) or tokens from cleaned sentences of training, validation & testing sample content  
+  
+5. Prune features occuring at low frequency (minDocFreqToKeep as 2) from sparse dfm to reduce its dimention.  
+
+    - Low frequency features are not helpful in predicting next word as their relative probability is quite low.  
+    
+    - Low frequency features count is usually quite considerable (~20% of sample vocabulary), hence removing them really helps in gaining memory and performance efficiency.  
+    
+    - These pruned features are treated through their common representation as 'not-observed-feature' in LM modeling but they are still involved through smoothing/backoff/interpolation algorithms.  
+    
+    - [CAVEAT] dfm_trim is ok to use on 1-gram dfm, but it may not be ok to use on higher n-grams. Correct approach to pruning higher order n-grams should have been by using pruned 1-gram features, not pruning n-gram dfm.  
+   
+   
+6. Extract terms frequency matrix/table (tfm) from dfm  
+  
+7. Prepare n-grams (for n=1,2,3) Language Models, i.e., probabilities in both MLE (maximum likelyhood estimation) & add-1 Laplace smoothing forms  
+
+    - Each of the 1/2/3-grams LM tables 'dfProbs.1g/2g/3g' contains columns for count, mle & probAdd1Laplace  
+    
+## 3.3 Next word prediction
+
+The following steps are involved in predicting next word: -  
+  
+1. Input sentence is cleaned in exact same way as training/validation sample was cleaned  
+  
+2. Resulting cleaned input sentence is assumed to contain at least 2 words as we are using upto 3-grams LM model. Extract last 2 tokens (P & Q) from cleaned input sentence  
+  
+3. The goal of prediction is to calculate probability for each of the 1-gram features (Rcandidates) as how probable is it in completing highest n-gram (P_Q_Rcandidates - if seen/observed 3-gram) or backed-off n-grams (Q_Rcandidates, if observed in 2-gram) or ultimately backed-off 1-gram (Rcandidates). Stupid BackOff uses 0.4 as lambda for penalizing backed-off, i.e., lower order n-gram probabilities.
+
+
+## 3.4 Perplexity
+
+Perplexity has been calculated using both simple MLE & Add1Laplace smoothed probability. As expected, it is better for 3-gram than lower n-grams.
+
+
+## 3.5 Accuracy
+
+The 'test' dataset is converted into 3-grams. Each of these 3-grams were split into bigram (used as input for next word prediction with best probability) and label (for comparing against prediction). Overall accuracy is percentage of correct predictions out of all predictions. The comparison of accuracy by both SBO & Add1Laplace clearly shows that SBO is alot better.
+
+
+## 3.6 NLP surfaces scratched during this course in the form of apparently silly & brilliant doubts/questions that crossed over. My intension here is not to reproduce asnwer learned while practically solving the quiz, milestone challenge and this final project task. This is just to capture depth/breadth of short self learning. And sure, I should have at least designed/implemented Katz or Kneser-Ney algorithm to justify the depth/breadth of research/learning but leaving them behind for now to focus on higher priority machine learning topics.
+
+- My guiding principle while learning any topic in Machine Learning has been to check their present relevance among renowned business AI/ML platforms.  
+
+- Is n-gram LM technique vogue in current time? As explained in earlier section, Neural Network (RNN / LSTM / etc) is aggresively being used for larger, distributed, better LM modeling.  
+
+- Words sequence, i.e., sentence -vs- next word probability; Log likelyhood probability estimate -vs- plain MLE.  
+
+- n-gram LM and its practical assumptions (Markov) & approximations.  
+
+- After observing that how nicely n-gram LM models predict "similar" meaning words if exact next word got lost or got assigned smaller probablility, I was lead to scratch the surface of Language Model 'symantics'. This statement "Agreement on a language’s meaning is partly a sociological process, without which the communicated data is worthless." is taken from http://www.wisdom.weizmann.ac.il/~harel/papers/ModSemantics.pdf . It precisely sums up the fact that Language 'symantics' is an ever evolving process in progressive social setup and it can be learned through their spatial relationship as in LM. Terms Correlation (R Quanteda or TM 'findAssocs') is a nice tool to get symantically similar terms.
+
+- [Silly] Why not merge all sentences into single large sentence by inserting SOS/EOS (start/end of sentence) markers? Why use intermediate Corpus/Tokens data structures, rather why not construct tfm (terms frequency table/matrix) directly; How to use full volume of text corpora through distributed-learning/modeling and how to merge parts?  
+
+- Why remove -or- retain Stop Words? Though I came across suggestion that they are carrier of sentence/language in favor of retaining them, but I observed that they belittle the probability of same/similar words prediction. Though I did not come across any minimum n-gram to use while retaining Stop Words, I feel that 3-gram is too small to have 2/3 Stop Words sometimes. LM model with 4 or 5+ n-grams would balance carrier sense and relative probability.  
+
+- How much of low frequencies features to prune? Technically, perplexity / cross-entropy should have been compared for varying pruning level but left this too behind. But for sure, this is a strong tool in reducing problem dimension as I observed features reduction upto 50%/freq_1_pruned, 65%/f2, 70%/f3 & 75%/f5 pruned.  
+
+- Why not attack both low frequency features pruning & stop words removal using TF-IDF (terms frequency - inverse document frequency)? The fact is that TF-IDF balances importance of term as well as importance/ranking of documents. It is not useful for Word/sentence prediction, rather it is useful to Search Engines for ranking documents relevance to search query.
+
+- Relation between n-grams, Markov chain and hidden Markov model. It was so cool fun to realize that weather prediction can be modeled without any meteorology/sensing/etc with *conditions apply*. These related areas altogether leads into the different world of 'Time Series Forecasting'.  
+
+- Having came across word2vec earlier in this specialization, it was an intuitive urge to know how this fits into the arena & it seems to lead to RNN.
+
+- It is interesting to have come across how Facebook FastText treats word-variants as char-n-grams and how it gives an edge over Word2Vec / GloVec. Actually, FastText char-ngram solves the need of social expression like 'thanx... thx... thanxxxxx..' kind of trendy mis-spelt words and treats this family of words as 'thank' which then feeds these known/seen word-ngram into subsequent pipeline of Sentiment Analysis.
+
+
+## 4. Useful results from coding at important checkpoints
+```{r Constants}
+## Constants
+dataPercentToUse <- 1.0     # Percentage of total dataset is read into memory out of which 60+20+20% for training, validation & testing
+minDocFreqToKeep <- 1        # Pruning single time occuring features/terms
+rmStopWords <- TRUE
+```
+
+
+```{r LaodLibraries, include=FALSE}
+require(plyr)
+require(dplyr)
+require(data.table)
+require(quanteda)
+require(tm)
+require(stringr)
+require(tidyr)
+```
+
+```{r PreRequisiteFunctions}
+##########################################################################################
+## Assumption: 
+##          ngrams & their probabilities upto to 3-gram are available
+##          Input sentence after data cleaning (stopwords, uri, email, twitter tags/handles, etc) should contain at least 2 tokens
+##
+## Input:
+##          data: Input sentence whose completing next word is to be predicted
+##          dfProbs.all: Load dfProbs.1g, .2g & .3g data from .rds files and feed in list(dfProbs.1g, .2g & .3g)
+##          reRemoveWords: To remove stopwords or not (CAUTION: not removing stopwords has always shown discouraging predictions)
+##
+## Output: List of ordered Add1Laplace probabilities & SBO scores predicting completing next word
+##
+## Step 1: Clean input 'data'
+## Step 2: Extract P (2nd last word) & Q (last word)
+## Step 3: Goal is to form P_Q_Rcandidates trigrams and...
+##          find probabilities for each of the Rcandidates...
+##              in probs.3g if observed -else- 
+##              find backed-off bigram(s) Q_Rcandidates in probs.2g -else-
+##              further back-off till unigram(s) Rcandidates in dfProbs.1g
+##########################################################################################
+calcProbsCompletingNgrams <- function(data, dfProbs.all, rmStopWords) {
+
+    if (rmStopWords == TRUE){
+      data <- tolower(data) %>% cleanUri %>% cleanTwitterTagsHandles %>% cleanAlphaNumerics %>% removeWords(stopwords()) %>% removePunctuation
+    } else
+    {
+      data <- tolower(data) %>% cleanUri %>% cleanTwitterTagsHandles %>% cleanAlphaNumerics %>% removePunctuation
+    }
+   
+    toks <- tokens(data, remove_numbers=TRUE, remove_url = TRUE)
+    toks <- unlist(toks[[1]])
+    
+    ## "UNK" to account for missing tokens...
+    ## ... due to either
+    ## 1. removed stop words -or- 
+    ## 2. pruned low-freq tokens -or-
+    ## 3. unseen tokens in input sentence whose next word is being predicted
+    toks[!(toks %in% rownames(dfProbs.all[[1]]))] <- "UNK"
+    nToks <- length(toks)
+    
+    ## P: 2nd last word
+    ## Q: Last word
+    ## R: All vocabulary words including UNK
+    if(nToks == 0) { P <- "UNK"; Q <- "UNK"}
+    if(nToks == 1) { P <- "UNK"; Q <- toks[nToks] }
+    if(nToks > 1) { P <- toks[nToks-1]; Q <- toks[nToks] }
+    R <- rownames(dfProbs.all[[1]])
+    R <- R[-length(R)]
+    
+    PQR <- paste(P, Q, R, sep="_")
+    QR <- paste(Q, R, sep="_")
+    
+    ## P_Q_predCandidates seen in 3-gram
+    id.PQR <- (PQR %in% rownames(dfProbs.all[[3]]))
+
+    ## P_Q_predCandidates NOT present; Q_predCandidates present
+    id.QR <- (!id.PQR) & (QR %in% rownames(dfProbs.all[[2]]))
+    
+    ## P_Q_predCandidates NOT present; Q_predCandidates NOT present; NOTE that predCandidates are always present
+    id.R <- (!id.PQR) & (!(QR %in% rownames(dfProbs.all[[2]]))) & (R %in% rownames(dfProbs.all[[1]]))
+    
+    matchedMle <- matrix(NA,length(PQR),1)
+    matchedProbAdd1Laplace <- matrix(NA,length(PQR),1)
+
+    ## Fill the probabilities corresponding to available/seen P_Q_predCandidates => hence no "backoff weight"
+    ## x0.4 for one backoff & x*2*0.4 for two backoff
+    if(sum(id.PQR)>0) { 
+        matchedMle[id.PQR] <- dfProbs.all[[3]][PQR[id.PQR], "mle"] 
+        rownames(matchedMle)[id.PQR] <- PQR[id.PQR]
+
+        matchedProbAdd1Laplace[id.PQR] <- dfProbs.all[[3]][PQR[id.PQR], "probAdd1Laplace"] 
+        rownames(matchedProbAdd1Laplace)[id.PQR] <- PQR[id.PQR]
+        }
+    if(sum(id.QR)>0) { 
+        matchedMle[id.QR] <- dfProbs.all[[2]][QR[id.QR], "mle"] * 0.4 
+        rownames(matchedMle)[id.QR] <- QR[id.QR]
+        
+        matchedProbAdd1Laplace[id.QR] <- dfProbs.all[[2]][QR[id.QR], "probAdd1Laplace"]
+        rownames(matchedProbAdd1Laplace)[id.QR] <- QR[id.QR]
+        }
+    if(sum(id.R)>0) { 
+        matchedMle[id.R] <- dfProbs.all[[1]][R[id.R], "mle"] * 0.4 * 0.4 
+        rownames(matchedMle)[id.R] <- R[id.R]
+
+        matchedProbAdd1Laplace[id.R] <- dfProbs.all[[1]][R[id.R], "probAdd1Laplace"]
+        rownames(matchedProbAdd1Laplace)[id.R] <- R[id.R]
+        }
+
+    dfPredWords <- data.frame(rownames(matchedMle), R, matchedMle, matchedProbAdd1Laplace, stringsAsFactors=FALSE)
+    colnames(dfPredWords) <- c("ngram", "predictedWord", "scoreStupidBackOff", "probsAdd1Laplace")
+
+    dfPredWordsSBO <- dfPredWords[order(dfPredWords[,"scoreStupidBackOff"], decreasing=TRUE), ]
+    dfPredWordsAdd1Lapce <- dfPredWords[order(dfPredWords[,"probsAdd1Laplace"], decreasing=TRUE), ]
+    
+    rownames(dfPredWordsSBO) <- NULL
+    #head(dfPredWordsSBO, 6)
+    
+    rownames(dfPredWordsAdd1Lapce) <- NULL
+    #head(dfPredWordsAdd1Lapce, 6)
+    
+    list(dfPredWordsSBO, dfPredWordsAdd1Lapce)
+}
+
+
+##########################################################################################
+## Assumption: 'data' is cleaned and separated into non-empty sentences; dfProbs.all = list(probs.1g, probs.2g, probs.3g)
+## Input: 'ngram' to calculate perplexity for n-gram to compare which is better suited for given train+valid dataset
+## Initializing probablity with real minimum to use for "...UNK" terms
+##########################################################################################
+perplexity <- function(algo, data, ngram, dfProbs.all) {
+  
+  algoColumnsList <- list(simpleMLE = "mle", add1 = "probAdd1Laplace")
+  probColName <- algoColumnsList[[algo]]
+  if(is.null(probColName)) probColName <- "mle"
+  
+  dfmPerp <- dfm(data, ngrams=ngram, remove_url = TRUE)
+  toksPerp <- featnames(dfmPerp)
+
+  minProbability <- min(dfProbs.all[[ngram]][, probColName])
+  if (minProbability == 0) minProbability <- 1e-06
+  
+  perpProbs <- matrix(minProbability, length(toksPerp), 1)
+  obsToksIndices <- toksPerp %in% rownames(dfProbs.all[[ngram]])
+  perpProbs[obsToksIndices] <- dfProbs.all[[ngram]][toksPerp[obsToksIndices], probColName]
+
+  perp <- (exp(-sum(log(perpProbs)) / length(toksPerp)))
+  perp
+}
+
+
+##########################################################################################
+## Assumption: 'data' as-isread from files
+## Input: 'text' read as-is from source
+## output: cleaned non-empty sentences
+##########################################################################################
+inputToCleanedSetences = function(text, removeStopWords) {
+
+    # Split each document into sentences list
+    text <- tokens(text, what = "sentence")
+
+    #Split multi-sentence list document into single-sentence document(s)
+    text <- unlist(text)
+
+    # Punctuation removal should happen after splitting multi-sentences document into single-sentence documents
+    if (removeStopWords == TRUE) {
+        text <- tolower(text) %>% cleanUri %>% cleanTwitterTagsHandles %>% cleanAlphaNumerics %>% removeWords(stopwords()) %>% removePunctuation
+    }
+    else {    
+        text <- tolower(text) %>% cleanUri %>% cleanTwitterTagsHandles %>% cleanAlphaNumerics %>% removePunctuation
+    }
+
+    # Remove blank lines
+    emptyIndices <- grep("^$", text)
+    if(length(emptyIndices)) { text <- text[-emptyIndices] }
+
+    text
+}
+
+cleanUri <- function(text){
+        ## remove html/ftp url (NOTE that Quanteda removeUrl takes care of this during tokens or dfm creation)
+        #text <- gsub("?(f|ht)tp(s?)://(.*)[.][a-z]+", "", text) 
+        ## remove e-mail adresses
+        text <- gsub("[[:alnum:].-]+@[[:alnum:].-]+", "", text) 
+        return(text)
+}
+
+cleanTwitterTagsHandles <- function(text){
+        ## remove twitter handles (NOTE that Quanteda removeTwitter removes only '#@' char)
+        text <- gsub("@\\S+", "", text)
+        ## remove twitter hashtags
+        text <- gsub("#\\S+", "", text)
+        return(text)
+}
+
+cleanAlphaNumerics <- function(text){
+        ## split "hello-world" or "hello_world" into "hello world"
+        ## CAUTION: Perform this before below cleanup
+        text <- gsub("[_-]", " ", text) 
+
+        ## Remove alpha-num words like 1sr 2nd 100A word2
+        ## NOTE that Quanteda removeNumber removes just the num from alpha-num
+        text <- gsub("[a-zA-Z0-9]*[0-9][a-zA-Z0-9]*", "", text) 
+
+        return(text)
+}
+
+
+##########################################################################################
+## calcAccuracy: Computes accuracy from 'nPredictions'
+## Input:
+##          data: Feed in 'test' cleaned sentences of which 50*nPredictions sentences are used for preparing 3-grams
+##          dfProbs.all: Load dfProbs.1g, .2g & .3g data from .rds files and feed in list(dfProbs.1g, .2g & .3g)
+##          reRemoveWords: To remove stopwords or not (CAUTION: not removing stopwords has always shown discouraging predictions)
+##          algo: "mle" or "probAdd1Laplace" for Add1Laplace probabilities or MLE+StupidBackOff scores for prediction
+## output: 'testStats' dataframe with "testTrigrams", "extractedBigram", "extractedLabel", "predictedWord" & "predStatus" columns
+##########################################################################################
+# Create 3-gram from testing dataset
+# Predict 3rd word with Word01_word02 bi-gram
+calcAccuracy <- function(data, dfProbs.all, rmRemoveWords, nPredictions, algo) {
+
+    nLinesToPickFromData <- ifelse((length(data) < (50*nPredictions)), length(data), (50*nPredictions))
+    data <- data[1:nLinesToPickFromData]
+    if (rmStopWords == TRUE) {
+        data <- tolower(data) %>% cleanUri %>% cleanTwitterTagsHandles %>% cleanAlphaNumerics %>% removeWords(stopwords()) %>% removePunctuation
+    }
+    else {    
+        data <- tolower(data) %>% cleanUri %>% cleanTwitterTagsHandles %>% cleanAlphaNumerics %>% removePunctuation
+    }
+  
+    dfmTest.1g <- dfm(data, ngrams=1, remove_url = TRUE)
+    testUnigrams <- featnames(dfmTest.1g)
+    testFeatsObsInTrainPc <- sum(testUnigrams %in% rownames(dfProbs.all[[1]])) * 100 / length(testUnigrams)
+
+    dfmTest.3g <- dfm(data, ngrams=3, remove_url = TRUE)  %>% dfm_trim(min_docfreq = minDocFreqToKeep)
+    testTrigrams <- featnames(dfmTest.3g)
+    
+    ## Randomly pick 'nPredictions' trigrams for checking accuracy
+    if(length(testTrigrams) < nPredictions) nPredictions <- length(testTrigrams)
+    testTrigrams <- testTrigrams[sample(1:length(testTrigrams), nPredictions)]
+    
+    df <- data.frame(x = testTrigrams)
+    extractOutput <- df %>% extract(x, into = c("bigram", "label"), "(.*)_([^_]+)$")
+
+    testStats <- data.frame(testTrigrams, extractOutput$bigram, extractOutput$label, stringsAsFactors=FALSE)
+    colnames(testStats) <- c("testTrigrams", "extractedBigram", "extractedLabel")
+
+    system.time(
+    testStats$predictedWord <- sapply(testStats$extractedBigram, function(x) {
+        listProbsPrediction <- calcProbsCompletingNgrams(x, dfProbs.all, TRUE)
+        
+        ## [[1]] is to use Stupid Backoff score; [[2]] is Add1Laplace
+        if (algo == "probAdd1Laplace") {
+            ## Instead of returning just the highest probable word, we are returning top 6 to confirm if expectedLabel is present in top 6 even though Prediction/Accuracy may be low
+            nextBestWord <- paste(listProbsPrediction[[2]][1:6, "predictedWord"], collapse="; ")
+        }
+        else {
+            nextBestWord <- paste(listProbsPrediction[[1]][1:6, "predictedWord"], collapse="; ")
+        }
+        
+        return(nextBestWord)
+        })
+    )
+
+    ## Re-extracting 
+    tmp <- sapply(strsplit(testStats$predictedWord, split = "; "), function(x) {x[1]})
+    
+    testStats$predStatus <- ifelse((testStats$extractedLabel == tmp), 1, 0)
+
+    ## Returning 'data' features overlap in 'train' as %; new value of 'nPredictions'; and 'testStats' containing 5 columns
+    return(list(nActualPredictions=nPredictions, overlap=testFeatsObsInTrainPc, dfStats=testStats))
+}
+```
+
+Global parameters for sampling, pruning and stop words removal
+```{r LoadDatasetExtractSample}
+dataFiles <- dir("../input/tweets-blogs-news-swiftkey-dataset-4million/swiftzip/final/en_US/", full.names=TRUE)
+dataLines <- ldply(dataFiles, function(ds) {
+    as.integer(sub(" .*$", "", system(paste("wc -l", ds), intern=TRUE)))
+})[,1]
+
+Nlines <- as.integer(dataLines * dataPercentToUse / 100)
+
+#d.b <- readLines("./final/en_US/en_US.blogs.txt", encoding = "UTF-8", n=Nlines, skipNul=TRUE)
+#d.n <- readLines("./final/en_US/en_US.news.txt", encoding = "UTF-8", n=Nlines, skipNul=TRUE)
+#d.t <- readLines("./final/en_US/en_US.twitter.txt", encoding = "UTF-8", n=Nlines, skipNul=TRUE)
+
+system.time( {
+d.b <- readLines(dataFiles[1], encoding = "UTF-8", n=Nlines[1], skipNul=TRUE)
+d.n <- readLines(dataFiles[2], encoding = "UTF-8", n=Nlines[2], skipNul=TRUE)
+d.t <- readLines(dataFiles[3], encoding = "UTF-8", n=Nlines[3], skipNul=TRUE)
+} )
+
+set.seed(100)
+idx.b <- sample(seq(Nlines[1])); N1.b <- round(0.6*Nlines[1]); N2.b <- round(0.8*Nlines[1])
+idx.n <- sample(seq(Nlines[2])); N1.n <- round(0.6*Nlines[2]); N2.n <- round(0.8*Nlines[2])
+idx.t <- sample(seq(Nlines[3])); N1.t <- round(0.6*Nlines[3]); N2.t <- round(0.8*Nlines[3])
+
+train <- c(d.b[idx.b[1:N1.b]],          d.n[idx.n[1:N1.n]],          d.t[idx.t[1:N1.t]])
+valid <- c(d.b[idx.b[(N1.b+1):N2.b]],     d.n[idx.n[(N1.n+1):N2.n]],     d.t[idx.t[(N1.t+1):N2.t]])
+test  <- c(d.b[idx.b[(N2.b+1):Nlines[1]]], d.n[idx.n[(N2.n+1):Nlines[2]]], d.t[idx.t[(N2.t+1):Nlines[3]]])
+
+print(paste0("Global parameters for how much % of data to sample from text corpus: ", dataPercentToUse, "; min freq terms to keep: ", minDocFreqToKeep, "; whether to remove stop words: ", rmStopWords))
+```
+
+Sizes of training, validation and testing sample data
+```{r CleanDatasetSample}
+system.time( {
+train <- inputToCleanedSetences(train, rmStopWords)
+valid <- inputToCleanedSetences(valid, rmStopWords)
+test <- inputToCleanedSetences(test, rmStopWords)
+} )
+
+print(paste0("No. of lines in training/validation/testing sample: ", length(train), "; ", length(valid), "; ", length(test)))
+```
+
+### 4.2 Counts of features and tokens in documents frequency matrices for 1/2/3-grams generated from cleaned 'training' sample
+```{r GetDocFreqMatrices}
+system.time( {
+dfm.1g <- dfm(train, ngrams=1, remove_url = TRUE) %>% dfm_trim(min_docfreq = minDocFreqToKeep)
+dfm.2g <- dfm(train, ngrams=2, remove_url = TRUE) %>% dfm_trim(min_docfreq = minDocFreqToKeep)
+dfm.3g <- dfm(train, ngrams=3, remove_url = TRUE) %>% dfm_trim(min_docfreq = minDocFreqToKeep)
+} )
+
+nFeats.1g <- length(dimnames(dfm.1g)$features)
+nTokens.1g <- sum(colSums(dfm.1g))
+
+nFeats.2g <- length(dimnames(dfm.2g)$features)
+nTokens.2g <- sum(colSums(dfm.2g))
+
+nFeats.3g <- length(dimnames(dfm.3g)$features)
+nTokens.3g <- sum(colSums(dfm.3g))
+
+tmpStats = data.frame(c(nFeats.1g, nFeats.2g, nFeats.3g), col2=c(nTokens.1g, nTokens.2g, nTokens.3g))
+colnames(tmpStats) <- c("Features", "Tokens")
+rownames(tmpStats) <- c("1-gram", "2-gram", "3-gram")
+print(tmpStats)
+```
+
+
+```{r CreateLangModelProbs1gram}
+dfProbs.1g <- data.frame(count=integer(), mle=double(), probAdd1Laplace=double())
+
+termsFreqStats <- textstat_frequency(dfm.1g)
+dfRows <- data.frame(count = termsFreqStats$frequency, mle=0, probAdd1Laplace=0)
+
+dfProbs.1g = rbind(dfProbs.1g, dfRows)
+colnames(dfProbs.1g)[1] <- "count"			# init implicitly gives 'freq' as col name
+rownames(dfProbs.1g) <- termsFreqStats$feature
+
+# ZERO as count can be used for "UNK", but PERPLEXITY will reach INFINITY due to log(0) hence resetting probablity to 1e-06 for such terms
+dfProbs.1g = rbind(dfProbs.1g, c(0, 0, 0, 0, 0))
+rownames(dfProbs.1g)[nrow(dfProbs.1g)] <- "UNK"
+
+nTokens.1g <- sum(dfProbs.1g[,"count"])
+nFeats.1g <- nrow(dfProbs.1g)
+
+dfProbs.1g[,"mle"] <- dfProbs.1g[, "count"] / nTokens.1g
+dfProbs.1g[,"probAdd1Laplace"] <- (dfProbs.1g[, "count"] + 1) / (nFeats.1g + nTokens.1g)
+
+rm(termsFreqStats)
+rm(dfm.1g)
+```
+
+
+```{r CreateLangModelProbs2gram}
+dfProbs.2g <- data.frame(count=integer(), mle=double(), probAdd1Laplace=double())
+
+termsFreqStats <- textstat_frequency(dfm.2g)
+dfRows <- data.frame(count = termsFreqStats$frequency, mle=0, probAdd1Laplace=0)
+
+dfProbs.2g = rbind(dfProbs.2g, dfRows)
+colnames(dfProbs.2g)[1] <- "count"			# init implicitly gives 'freq' as col name
+rownames(dfProbs.2g) <- termsFreqStats$feature
+
+PQ <- rownames(dfProbs.2g)
+P <- sapply(strsplit(PQ, split = "_"), function(x) {x[1]})
+
+dfProbs.2g[, "mle"] <- dfProbs.2g[, "count"] / dfProbs.1g[P, "count"]
+dfProbs.2g[, "probAdd1Laplace"] <- (dfProbs.2g[, "count"] + 1) / (nFeats.1g + dfProbs.1g[P, "count"])
+
+# ZERO as count can be used for "UNK", but PERPLEXITY will reach INFINITY due to log(0) hence resetting probablity to 1e-06 for such terms
+# "token_UNK" and "UNK_UNK" unseen bigram MLE is 0 & Laplace smoothed probability is 1/(nFeats.1g + c(token))
+rowsWordUnk <- data.frame(count = 0, mle = 0, probAdd1Laplace= (1 / (nFeats.1g + dfProbs.1g[, "count"]) ) )
+rownames(rowsWordUnk) <- paste(rownames(dfProbs.1g), "UNK", sep="_")
+
+dfProbs.2g <- rbind(dfProbs.2g, rowsWordUnk)
+
+rm(termsFreqStats)
+rm(dfm.2g)
+```
+
+
+```{r CreateLangModelProbs3gram}
+# "Wi-2_Wi-1_Wi" trigrams
+dfProbs.3g <- data.frame(count=integer(), mle=double(), probAdd1Laplace=double())
+
+termsFreqStats <- textstat_frequency(dfm.3g)
+dfRows <- data.frame(count = termsFreqStats$frequency, mle=0, probAdd1Laplace=0)
+
+dfProbs.3g = rbind(dfProbs.3g, dfRows)
+colnames(dfProbs.3g)[1] <- "count"			# init implicitly gives 'freq' as col name
+rownames(dfProbs.3g) <- termsFreqStats$feature
+
+PQR <- rownames(dfProbs.3g)
+PQ <- sapply(strsplit(PQR, split = "_"), function(x) paste(x[1:2], collapse = "_"))
+
+dfProbs.3g[, "mle"] <- dfProbs.3g[, "count"] / dfProbs.2g[PQ, "count"]
+dfProbs.3g[, "probAdd1Laplace"] <- (dfProbs.3g[, "count"] + 1) / (nFeats.1g + dfProbs.2g[PQ, "count"])
+
+rm(termsFreqStats)
+rm(dfm.3g)
+```
+
+Confirm max probabilities of both MLE & Add1Laplace for all 1/2/3-grams to confirm that any miscalculation is not throwing it above 1.0
+```{r}
+print(paste0("Max MLE probability for 1-gram: ", sprintf("%.6f", max(dfProbs.1g$mle)), "; 2-gram: ", sprintf("%.6f", max(dfProbs.2g$mle)),  "; 3-gram: ", sprintf("%.6f", max(dfProbs.3g$mle))))
+print(paste0("Max Add1Laplace probability for 1-gram: ", sprintf("%.6f", max(dfProbs.1g$probAdd1Laplace)), "; 2-gram: ", sprintf("%.6f", max(dfProbs.2g$probAdd1Laplace)),  "; 3-gram: ", sprintf("%.6f", max(dfProbs.3g$probAdd1Laplace))))
+```
+
+
+```{r SaveNgramModels}
+saveRDS(dfProbs.1g, "SBOnLaplace_1pc_prune1_noStopWords_1g_v35.rds")
+saveRDS(dfProbs.2g, "SBOnLaplace_1pc_prune1_noStopWords_2g_v35.rds")
+saveRDS(dfProbs.3g, "SBOnLaplace_1pc_prune1_noStopWords_3g_v35.rds")
+```
+
+Sample test sentences and their corresponding next word prediction by both SBO & Add1Laplace. Observe as how often SBO finds most probable words in higher n-grams compared to those by Add1Laplace
+```{r SampleTestCases}
+# Sample test cases
+dfProbs.all <- list(dfProbs.1g, dfProbs.2g, dfProbs.3g)
+
+## [1] "day" =>x[[1]] is for Stupic Backoff top 6 scores & x[[2]] is for Add1Laplace
+system.time(x <- calcProbsCompletingNgrams("To all the mothers out there, wish you a Happy Mother's", dfProbs.all, rmStopWords))
+print("Next word prediction for => To all the mothers out there, wish you a Happy Mother's")
+head(x[[1]][,c(1:3)])
+head(x[[2]][,c(1, 2, 4)])
+
+## [1] "birthday"
+system.time(x <- calcProbsCompletingNgrams("Wish you a very Happy", dfProbs.all, rmStopWords))
+print("Next word prediction for => Wish you a very Happy")
+head(x[[1]][,c(1:3)])
+head(x[[2]][,c(1, 2, 4)])
+
+## [1] "corn" 
+system.time(x <- calcProbsCompletingNgrams("Processed foods contain high fructose", dfProbs.all, rmStopWords))
+print("Next word prediction for => Processed foods contain high fructose")
+head(x[[1]][,c(1:3)])
+head(x[[2]][,c(1, 2, 4)])
+
+## [1] "syrup"
+system.time(x <- calcProbsCompletingNgrams("Processed foods contain high fructose corn", dfProbs.all, rmStopWords))
+print("Next word prediction for => Processed foods contain high fructose corn")
+head(x[[1]][,c(1:3)])
+head(x[[2]][,c(1, 2, 4)])
+
+## [1] "states"
+system.time(x <- calcProbsCompletingNgrams("This is United", dfProbs.all, rmStopWords))
+print("Next word prediction for => This is United")
+head(x[[1]][,c(1:3)])
+head(x[[2]][,c(1, 2, 4)])
+
+## [1] "america"
+system.time(x <- calcProbsCompletingNgrams("This is United states of", dfProbs.all, rmStopWords))
+print("Next word prediction for => This is United states of")
+head(x[[1]][,c(1:3)])
+head(x[[2]][,c(1, 2, 4)])
+
+## [1] "day"
+system.time(x <- calcProbsCompletingNgrams("What did you get as a Valentine's", dfProbs.all, rmStopWords))
+print("Next word prediction for => What did you get as a Valentine's")
+head(x[[1]][,c(1:3)])
+head(x[[2]][,c(1, 2, 4)])
+
+## [1] "gift"
+system.time(x <- calcProbsCompletingNgrams("What did you get as a Valentine's day", dfProbs.all, rmStopWords))
+print("Next word prediction for => What did you get as a Valentine's day")
+head(x[[1]][,c(1:3)])
+head(x[[2]][,c(1, 2, 4)])
+```
+
+Calculation of perplexity using both MLE & Add1Laplace probabilities for 1/2/3-grams. Note that comparison of perplexity for any n-gram using different probabilities is meaningless because even probabilities by MLE & Add1Laplace should not be compared. Perplexity of different n-grams by MLE or by Add1Laplace can be compared among themselve. The whole idea is that perplexity is expected to be better, i.e., smaller value for higher order n-grams.
+```{r CalcPerplexity}
+# Review relative PERPLEXITY of both MLE & Add1Laplace probabilities
+dfProbs.all <- list(dfProbs.1g, dfProbs.2g, dfProbs.3g)
+
+system.time( {
+perplexityMLE.1g <- perplexity("simpleMLE", valid, 1, dfProbs.all)
+perplexityMLE.2g <- perplexity("simpleMLE", valid, 2, dfProbs.all)
+perplexityMLE.3g <- perplexity("simpleMLE", valid, 3, dfProbs.all)
+} )
+print(paste0("Relative PERPLEXITY of MLE probabilities on validation dataset for 1-gram: ", sprintf("%.2f", perplexityMLE.1g), "; 2-gram: ", sprintf("%.2f", perplexityMLE.2g), "; 3-gram: ", sprintf("%.2f", perplexityMLE.3g)))
+
+system.time( {
+perplexityAdd1Laplace.1g <- perplexity("add1", valid, 1, dfProbs.all)
+perplexityAdd1Laplace.2g <- perplexity("add1", valid, 2, dfProbs.all)
+perplexityAdd1Laplace.3g <- perplexity("add1", valid, 3, dfProbs.all)
+} )
+print(paste0("Relative PERPLEXITY of Add1Laplace probabilities on validation dataset for 1-gram: ", sprintf("%.2f", perplexityAdd1Laplace.1g), "; 2-gram: ", sprintf("%.2f", perplexityAdd1Laplace.2g), "; 3-gram: ", sprintf("%.2f", perplexityAdd1Laplace.3g)))
+```
+
+Calculation of next word prediction accuracy for 'nTotalPredictions' sample test sentences, i.e., 'nTotalPredictions' 3-grams picked from nTotalPredictions*10 sentences of text taken from cleaned testing sample. Simplest baseline check to perform if prediction/accuracy calculation is fine is to use 'train' data into 'calcAccuracy' and we should get ~100% accuracy!
+```{r CalcAccuracy}
+## Accuracy for 'nTotalPredictions' random trigrams from test sample
+nTotalPredictions <- 100
+system.time(retSBO <- calcAccuracy(test, dfProbs.all, rmStopWords, nTotalPredictions, "mle"))
+accuracySBO <- sum(retSBO$dfStats$predStatus) / retSBO$nActualPredictions * 100
+
+system.time(retAdd1Laplace <- calcAccuracy(test, dfProbs.all, rmStopWords, nTotalPredictions, "probAdd1Laplace"))
+accuracyAdd1Laplace <- sum(retAdd1Laplace$dfStats$predStatus) / retAdd1Laplace$nActualPredictions * 100
+
+dfAccuracyStats <- data.frame(AccuracyPc=c(accuracySBO, accuracyAdd1Laplace), OverlapPc=c(retSBO$overlap, retAdd1Laplace$overlap))
+rownames(dfAccuracyStats) <- c("SBO", "Add1Laplace")
+
+print(paste0("Stats of test features overlap% in train & prediction accuracy% for attempted predictions: ", retSBO$nActualPredictions))
+print(dfAccuracyStats)
+
+## Showing summary of prediction with 10 rows
+nItemsToShow <- ifelse((length(retSBO$dfStats) < 10), length(retSBO$dfStats), 10)
+print("List of few predictions by SBO from accuracy calculation excercise...")
+retSBO$dfStats[1:nItemsToShow, c(2:5)]
+
+nItemsToShow <- ifelse((length(retAdd1Laplace$dfStats) < 10), length(retAdd1Laplace$dfStats), 10)
+print("List of few predictions by Add1Laplace from accuracy calculation excercise...")
+retAdd1Laplace$dfStats[1:nItemsToShow, c(2:5)]
+```
+
+# Further interests in learning / practicing
+1. Large scale distributed learning of n-gram Language Model  
+  - Using a small dataset, demonstrate as how distributed tokenization/learning works and how to re-assemble them to get a working LM
+2. Apply RNN / LSTM for Language Modeling
+
+
+# References
+1a. Speech and Language Processing, chapter 4 ebook, Daniel Jurafsky & James H. Martin. https://web.stanford.edu/~jurafsky/slp3/4.pdf This has been my master or primary reference!  
+1b. Stanford NLP videos series by Daniel Jurafsky & team
+2. Stupid Backoff by Brents et. al. http://www.aclweb.org/anthology/D07-1090.pdf  
+3. Hint for scalable implementation from https://rpubs.com/spilli/177703  
+4. Extremely grounded gist of Language Model http://people.cs.georgetown.edu/nschneid/cosc572/f16/09_LM_slides.pdf  
+5. Udacity videos on various Machine Learning topics were so friendly without any maths/stats, e.g., https://www.youtube.com/watch?v=kqSzLo9fenk&t=933s  
+6. www.AnalyticVidhya.com too has been quite a good source of curated articles on all AI/ML topics!
