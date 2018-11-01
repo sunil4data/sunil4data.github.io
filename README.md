@@ -1,9 +1,13 @@
-# sunil4data.github.io
+### Public Items/Kernels: -
+1. PySpark.ml with pipeline using Logistic Regression evaluator for documents classification on Chicago Data Portal dataset Food Inspection documents: https://databricks-prod-cloudfront.cloud.databricks.com/public/4027ec902e239c93eaaa8714f173bcfc/1044241664895185/3320241132890744/3281307886843282/latest.html. NOTE that this notebook kernel was created on Databricks Community cloud! 
+2. Image classification using ResNet50 based transfer learning ConvNet in Keras in a Python notebook kernel on Kaggle platform https://www.kaggle.com/suniliitb96/tutorial-keras-transfer-learning-with-resnet50 
+3. Image classification using Fast.ai & ResNet50 pretrained convnet in a Python notebook kernel on Kaggle platform https://www.kaggle.com/suniliitb96/fast-ai-learning-through-cats-dogs 
+4. First submission to Kaggle competition https://www.kaggle.com/suniliitb96/mytitanic 
 
-@ PySpark.ml with pipeline using Logistic Regression evaluator for documents classification on Chicago Data Portal dataset Food Inspection documents: https://databricks-prod-cloudfront.cloud.databricks.com/public/4027ec902e239c93eaaa8714f173bcfc/1044241664895185/3320241132890744/3281307886843282/latest.html. NOTE that this notebook kernel was created on Databricks Community cloud! 
-
-@ Image classification using ResNet50 based transfer learning ConvNet in Keras in a Python notebook kernel on Kaggle platform https://www.kaggle.com/suniliitb96/tutorial-keras-transfer-learning-with-resnet50 
-
-@ Image classification using Fast.ai & ResNet50 pretrained convnet in a Python notebook kernel on Kaggle platform https://www.kaggle.com/suniliitb96/fast-ai-learning-through-cats-dogs 
-
-@ First submission to Kaggle competition https://www.kaggle.com/suniliitb96/mytitanic 
+### Certifications: -
+1. Data Science 10-courses Specialization Certification by JHU on Coursera with NLP Capstone - 2018 https://www.coursera.org/account/accomplishments/specialization/6GQAJK4A4WXH 
+2. Machine Learning with TensorFlow on Google Cloud Platform 5-courses specialization by Google Cloud on Coursera - 2018 https://www.coursera.org/account/accomplishments/specialization/YYBW28SLFQEF 
+3. Deep Learning for Coders 2018 by Fast.ai - 2018
+4. Extensive study of key online courses "CS231n: CNN for Visual Recognition" by Andrej Karpathy & NLP by Chris Manning, Standford University
+5. Big Data courses in Apache Hadoop, Spark, Spark.ML, Spark.SQL & Docker on various MOOC platforms (IBM BigData Univ, Coursera, eDX) and practicing on IBM Watson, Azure HDInsight, Azure Databricks, CDH Quickstart Docker local setup - 2018
+6. Exam 535: Architecting Microsoft Azure Solutions with special interest in Data, Security & PaaS areas - 2018 https://www.youracclaim.com/badges/1db1ed9c-0c8a-4314-a7dc-b1f350039b89 
