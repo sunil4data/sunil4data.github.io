@@ -10,5 +10,5 @@
 * Machine Learning with TensorFlow on Google Cloud Platform 5-courses specialization by Google Cloud on Coursera - 2018 https://www.coursera.org/account/accomplishments/specialization/YYBW28SLFQEF 
 * Deep Learning for Coders 2018 by Fast.ai
 * Extensive study of key online courses "CS231n: CNN for Visual Recognition" by Andrej Karpathy et. al. & NLP by Chris Manning et. al., Standford University
-* Big Data courses in Apache Hadoop, Spark, Spark.ML, Spark.SQL & Docker on various MOOC platforms (IBM BigData Univ, Coursera, eDX) and practicing on IBM Watson, Azure HDInsight, Azure Databricks, CDH Quickstart Docker - 2018
+* Big Data, Distributed ML & Streaming practice using Apache Hadoop, Spark, Spark.ML, Spark.SQL on IBM Watson & Azure Databricks - 2018
 * Exam 535: Architecting Microsoft Azure Solutions with special interest in Data, Security & PaaS areas - 2018 https://www.youracclaim.com/badges/1db1ed9c-0c8a-4314-a7dc-b1f350039b89 
