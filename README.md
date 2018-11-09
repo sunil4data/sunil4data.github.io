@@ -11,5 +11,5 @@
 * Deep Learning for Coders 2018 by Fast.ai
 * Extensive study of key online courses "CS231n: CNN for Visual Recognition" by Andrej Karpathy et. al. & NLP by Chris Manning et. al., Standford University
 * Big Data, Distributed ML & Streaming practice using Apache Hadoop, Spark, Spark.ML, Spark.SQL on IBM Watson & Azure Databricks - 2018
-* Apache Hadoop 101 by IBM Big Data University 2018 https://courses.cognitiveclass.ai/certificates/6c16973f9956455bb2d574a7a086a512 
+* Apache Hadoop by IBM Big Data University 2018 https://courses.cognitiveclass.ai/certificates/6c16973f9956455bb2d574a7a086a512 
 * Exam 535: Architecting Microsoft Azure Solutions with special interest in Data, Security & PaaS areas - 2018 https://www.youracclaim.com/badges/1db1ed9c-0c8a-4314-a7dc-b1f350039b89 
