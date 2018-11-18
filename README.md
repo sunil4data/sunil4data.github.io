@@ -9,7 +9,10 @@
 * Data Science 10-courses Specialization Certification by JHU on Coursera - 2018 https://www.coursera.org/account/accomplishments/specialization/6GQAJK4A4WXH 
 * Machine Learning with TensorFlow on Google Cloud Platform 5-courses specialization by Google Cloud on Coursera - 2018 https://www.coursera.org/account/accomplishments/specialization/YYBW28SLFQEF 
 * Deep Learning for Coders 2018 by Fast.ai
-* Extensive study of key online courses "CS231n: CNN for Visual Recognition" by Andrej Karpathy et. al. & NLP by Chris Manning et. al., Standford University
+* Key online courses "CS231n: CNN for Visual Recognition" & “CS224n: NLP Lectures”, Standford University
+
 * Big Data, Distributed ML & Streaming practice using Apache Hadoop, Spark, Spark.ML, Spark.SQL on IBM Watson & Azure Databricks - 2018
 * Apache Hadoop by IBM Big Data University 2018 https://courses.cognitiveclass.ai/certificates/6c16973f9956455bb2d574a7a086a512 
+* Microsoft: DAT202.3x, “Implementing Predictive Analytics with Spark in Azure HDInsight” by edX - 2018
+
 * Exam 535: Architecting Microsoft Azure Solutions with special interest in Data, Security & PaaS areas - 2018 https://www.youracclaim.com/badges/1db1ed9c-0c8a-4314-a7dc-b1f350039b89 
