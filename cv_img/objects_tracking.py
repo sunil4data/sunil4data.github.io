@@ -1,3 +1,27 @@
+###############################################################################################
+# Object DETECTION -vs- Object RECOGNITION -vs- Moving Object TRACKING
+#
+# Primer on DETECTION -vs- RECOGNITION
+# https://software.intel.com/en-us/articles/a-closer-look-at-object-detection-recognition-and-tracking
+#
+# Evolution of Computer Vision till 2014 by Larry Zitnick
+# with best of intuitive reasoning as why some approach succeeded or why & where  some failed
+# https://www.youtube.com/watch?v=fbFYdzatOMg
+#
+# Nice article about Object Detection historical perspective though it mixes detection & recognition
+# https://www.kaggle.com/infernop/object-detection-techniques
+#
+# Object DETECTION works on the principal of frames difference.
+# It doesn't care about what the object really is, i.e., no RECOGNITION
+#
+# Object RECOGNITION is about Classifying a localized region.
+# It involves prior learning or training of known classes.
+# DETECTION & RECOGNITION are almost used interchangeably, though they are quite different.
+#
+# This solution is for Moving Object TRACKING based on difference between current frame -vs- t0 frame.
+# 
+###############################################################################################
+
 import cv2
 
 # Try it with live webcam
