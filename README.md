@@ -2,7 +2,7 @@ Repository contents abstract: -
 
 * ./kaggle
     * Quora_BiLSTM_Attention.ipynb: Text classification of IMBALANCED data set using multiple Embeddings, Bi-LSTM+Attention, CNN & MaxPooling
-    * nyc-taxi-fare-prediction.ipynb: Taxi Fair Prediction involving GeoLocation with DBSCAN hierarchical clustering and XGBoost regression
+    * NYC_Taxi_fare_prediction.ipynb: Taxi Fair Prediction involving GeoLocation with DBSCAN hierarchical clustering and XGBoost regression
     * word_predict_swiftkey.Rmd: Classical NLP Language Modelling to model n-gram probabilities for predicting Swift style next word
     * Titanic_XGB_HParams_Tuning.ipynb: Xgboost & other classifiers for logistic regression
     * Keras_ResNet50_CatsDogs.ipynb: Tutorial on Keras+TensorFlow for ResNet Transfer Learning based image classification
