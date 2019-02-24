@@ -1,0 +1,5 @@
+{
+    "subscription_id": "<xyz>",
+    "resource_group": "<corresponding to Azure ML Service Workspace>",
+    "workspace_name": "<Azure ML Service Workspace Name>"
+}
